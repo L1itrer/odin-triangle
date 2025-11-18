@@ -3,8 +3,10 @@ package main
 import win32 "core:sys/windows"
 import gl "vendor:OpenGL"
 import "core:fmt"
+import "core:c"
 
 gRunning: bool = true
+opengl32dll: win32.HMODULE
 
 WINDOW_WIDTH :: 800
 WINDOW_HEIGHT :: 600
@@ -17,9 +19,11 @@ main :: proc()
     fmt.eprintln("could not create a win32 window")
     return
   }
-  ok = win32_init_opengl(window)
-  if !ok do return
-  for gRunning
+  dc := win32.GetDC(window)
+  glCtx, loaded_opengl := win32_init_opengl(dc, 3, 3)
+  if !loaded_opengl do return
+  free_all(context.temp_allocator)
+  mainLoop: for gRunning
   {
     message: win32.MSG
     for win32.PeekMessageW(&message, nil, 0, 0, win32.PM_REMOVE)
@@ -28,6 +32,10 @@ main :: proc()
       win32.TranslateMessage(&message)
       win32.DispatchMessageW(&message)
     }
+    gl.ClearColor(1.0, 0.5, 0.5, 1.0)
+    gl.Clear(u32(gl.GL_Enum.COLOR_BUFFER_BIT) | u32(gl.GL_Enum.DEPTH_BUFFER_BIT))
+
+    win32.SwapBuffers(dc)
   }
 }
 
@@ -79,15 +87,6 @@ win32_window_proc :: proc "stdcall" (windowHandle: win32.HWND, message: u32, wPa
     case win32.WM_ACTIVATEAPP:
     {
     }
-    case win32.WM_PAINT:
-    {
-      dc := win32.GetDC(windowHandle)
-      defer win32.ReleaseDC(windowHandle, dc)
-      gl.ClearColor(1.0, 0.5, 0.5, 0.0)
-      gl.Viewport(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT)
-      gl.Clear(u32(gl.GL_Enum.COLOR_BUFFER_BIT))
-      win32.SwapBuffers(dc)
-    }
 
     case: 
     {
@@ -97,28 +96,28 @@ win32_window_proc :: proc "stdcall" (windowHandle: win32.HWND, message: u32, wPa
   return result
 }
 
-win32_init_opengl :: proc(window: win32.HWND) -> (ok: bool)
+win32_init_opengl :: proc(realDc: win32.HDC, majorVersion, minorVersion: c.int) ->
+(glContext: win32.HGLRC, ok: bool)
 {
   desiredPixelFormat, suggestedPixelFormat: win32.PIXELFORMATDESCRIPTOR
-  dc := win32.GetDC(window)
- // dummyWindowClass: win32.WNDCLASSW = {
- //   style = win32.CS_HREDRAW | win32.CS_VREDRAW | win32.CS_OWNDC,
- //   lpfnWndProc = win32.DefWindowProcW,
- //   hInstance = cast(win32.HINSTANCE)win32.GetModuleHandleW(nil),
- //   lpszClassName = win32.utf8_to_wstring("opengldummyclass")
- // }
- // assert(bool(win32.RegisterClassW(&dummyWindowClass)))
- // window := win32.CreateWindowExW(0, dummyWindowClass.lpszClassName, win32.utf8_to_wstring("dontcare"), 0, win32.CW_USEDEFAULT, win32.CW_USEDEFAULT, win32.CW_USEDEFAULT, win32.CW_USEDEFAULT, nil, nil, dummyWindowClass.hInstance, nil)
- // assert(window != nil)
-  //dc := win32.GetDC(window)
-  //desiredPixelFormat = {
-  //  nSize = size_of(win32.PIXELFORMATDESCRIPTOR),
-  //  nVersion = 1,
-  //  dwFlags = win32.PFD_SUPPORT_OPENGL | win32.PFD_DRAW_TO_WINDOW | win32.PFD_DOUBLEBUFFER,
-  //  cColorBits = 32,
-  //  cAlphaBits = 8,
-  //  iLayerType = win32.PFD_MAIN_PLANE
-  //}
+  dummyWindowClass: win32.WNDCLASSW = {
+    style = win32.CS_HREDRAW | win32.CS_VREDRAW | win32.CS_OWNDC,
+    lpfnWndProc = win32.DefWindowProcW,
+    hInstance = cast(win32.HINSTANCE)win32.GetModuleHandleW(nil),
+    lpszClassName = win32.utf8_to_wstring("opengldummyclass")
+  }
+  assert(bool(win32.RegisterClassW(&dummyWindowClass)))
+  dummyWindow := win32.CreateWindowExW(0, dummyWindowClass.lpszClassName, win32.utf8_to_wstring("dontcare"), 0, win32.CW_USEDEFAULT, win32.CW_USEDEFAULT, win32.CW_USEDEFAULT, win32.CW_USEDEFAULT, nil, nil, dummyWindowClass.hInstance, nil)
+  assert(dummyWindow != nil)
+  dc := win32.GetDC(dummyWindow)
+  desiredPixelFormat = {
+    nSize = size_of(win32.PIXELFORMATDESCRIPTOR),
+    nVersion = 1,
+    dwFlags = win32.PFD_SUPPORT_OPENGL | win32.PFD_DRAW_TO_WINDOW | win32.PFD_DOUBLEBUFFER,
+    cColorBits = 32,
+    cAlphaBits = 8,
+    iLayerType = win32.PFD_MAIN_PLANE
+  }
   suggestedFormatIndex := win32.ChoosePixelFormat(dc, &desiredPixelFormat)
   win32.DescribePixelFormat(dc, 
     suggestedFormatIndex, 
@@ -128,29 +127,78 @@ win32_init_opengl :: proc(window: win32.HWND) -> (ok: bool)
   if !bool(win32.SetPixelFormat(dc, suggestedFormatIndex, &suggestedPixelFormat))
   {
     fmt.eprintln("could not set win32 pixel format")
-    return false
+    return nil, false
   }
   dummyContext := win32.wglCreateContext(dc)
   result := win32.wglMakeCurrent(dc, dummyContext)
   assert(bool(result), "How the fuck does your computer not have opengl")
   xCreateContextAttribsARB : win32.CreateContextAttribsARBType = cast(win32.CreateContextAttribsARBType)win32.wglGetProcAddress("wglCreateContextAttribsARB")
-  xChoosePixelFormatARBType : win32.ChoosePixelFormatARBType = cast(win32.ChoosePixelFormatARBType)win32.wglGetProcAddress("wglChoosePixelFormatARB")
-  assert(xCreateContextAttribsARB != nil && xChoosePixelFormatARBType != nil, "Could not locate opengl startup procs")
-  local_set_proc_address :: proc(p: rawptr, name: cstring)
-  {
-    procedure : ^rawptr = cast(^rawptr)p
-    procedure^ = win32.wglGetProcAddress(name)
-  }
-  gl.load_3_3(local_set_proc_address)
-  // win32.wglMakeCurrent(dc, nil)
-  // win32.wglDeleteContext(dummyContext)
-  win32.ReleaseDC(window, dc)
+  xChoosePixelFormatARB : win32.ChoosePixelFormatARBType = cast(win32.ChoosePixelFormatARBType)win32.wglGetProcAddress("wglChoosePixelFormatARB")
+  assert(xCreateContextAttribsARB != nil && xChoosePixelFormatARB != nil, "Could not locate opengl startup procs")
+  win32.wglMakeCurrent(dc, nil)
+  win32.wglDeleteContext(dummyContext)
+  win32.ReleaseDC(dummyWindow, dc)
+  win32.DestroyWindow(dummyWindow)
 
 
   // ACTUAL INITIALIZATION HAPENS HERE
 
-  // pixelFormatAttribs: [?]win32.DWORD = {win32.WGL_DRAW_TO_WINDOW_ARB  }
+  pixelFormatAttribs := [?]i32 {
+    win32.WGL_DRAW_TO_WINDOW_ARB, i32(gl.GL_Enum.TRUE),
+    win32.WGL_SUPPORT_OPENGL_ARB, i32(gl.GL_Enum.TRUE),
+    win32.WGL_DOUBLE_BUFFER_ARB, i32(gl.GL_Enum.TRUE),
+    win32.WGL_ACCELERATION_ARB, win32.WGL_FULL_ACCELERATION_ARB,
+    win32.WGL_PIXEL_TYPE_ARB, win32.WGL_TYPE_RGBA_ARB,
+    win32.WGL_COLOR_BITS_ARB, 32,
+    win32.WGL_DEPTH_BITS_ARB, 24,
+    win32.WGL_STENCIL_BITS_ARB, 8,
+    0
+  }
+  pixelFormat := [1]i32{}
+  numFormats := [1]win32.DWORD{}
+  xChoosePixelFormatARB(
+    realDc, 
+    raw_data(pixelFormatAttribs[:]), 
+    nil, 
+    1, 
+    raw_data(pixelFormat[:]), 
+    raw_data(numFormats[:])
+  )
+  assert(numFormats != 0, "xChoosePixelFomratARB failed")
+  win32.DescribePixelFormat(realDc, pixelFormat[0], size_of(desiredPixelFormat), &desiredPixelFormat)
+  result = win32.SetPixelFormat(realDc, pixelFormat[0], &desiredPixelFormat)
+  assert(bool(result), "Could not set pixel format")
+
+  glAttribs := [?]c.int{
+    win32.WGL_CONTEXT_MAJOR_VERSION_ARB, majorVersion,
+    win32.WGL_CONTEXT_MINOR_VERSION_ARB, minorVersion,
+    win32.WGL_CONTEXT_PROFILE_MASK_ARB, win32.WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
+    0
+  }
+  openglContext := xCreateContextAttribsARB(realDc, nil, raw_data(glAttribs[:]))
+  assert(openglContext != nil, "could not create opengl context")
+  result = win32.wglMakeCurrent(realDc, openglContext)
+  assert(bool(result), "could not set opengl context to current")
 
 
-  return true
+  opengl_proc_address :: proc(address: rawptr, name: cstring)
+  {
+    // if it's a new (ver> 1.1) function you have to load it through wglGetProcAddress
+    // if it's an old function yout have to load it from opengl32.dll
+    // the genius of microsoft developers cannot be understated
+    write_address : ^rawptr = cast(^rawptr)address
+    proc_address := win32.wglGetProcAddress(name)
+    if proc_address == nil
+    {
+      proc_address = win32.GetProcAddress(opengl32dll, name)
+    }
+    assert(proc_address != nil)
+    write_address^ = proc_address
+  }
+  opengl32dll = win32.LoadLibraryW(win32.utf8_to_wstring("opengl32.dll"))
+  assert(opengl32dll != nil)
+  gl.load_up_to(int(majorVersion), int(minorVersion), opengl_proc_address)
+  win32.FreeLibrary(opengl32dll)
+
+  return openglContext, true
 }

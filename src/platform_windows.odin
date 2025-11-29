@@ -4,6 +4,7 @@ import win32 "core:sys/windows"
 import gl "vendor:OpenGL"
 import "core:fmt"
 import "core:c"
+import "app"
 
 gRunning: bool = true
 opengl32dll: win32.HMODULE
@@ -32,8 +33,7 @@ main :: proc()
       win32.TranslateMessage(&message)
       win32.DispatchMessageW(&message)
     }
-    gl.ClearColor(1.0, 0.5, 0.5, 1.0)
-    gl.Clear(u32(gl.GL_Enum.COLOR_BUFFER_BIT) | u32(gl.GL_Enum.DEPTH_BUFFER_BIT))
+    app.update_and_render(WINDOW_HEIGHT, WINDOW_WIDTH)
 
     win32.SwapBuffers(dc)
   }
@@ -184,7 +184,7 @@ win32_init_opengl :: proc(realDc: win32.HDC, majorVersion, minorVersion: c.int) 
   opengl_proc_address :: proc(address: rawptr, name: cstring)
   {
     // if it's a new (ver> 1.1) function you have to load it through wglGetProcAddress
-    // if it's an old function yout have to load it from opengl32.dll
+    // if it's an old function you have to load it from opengl32.dll
     // the genius of microsoft developers cannot be understated
     write_address : ^rawptr = cast(^rawptr)address
     proc_address := win32.wglGetProcAddress(name)
@@ -198,7 +198,6 @@ win32_init_opengl :: proc(realDc: win32.HDC, majorVersion, minorVersion: c.int) 
   opengl32dll = win32.LoadLibraryW(win32.utf8_to_wstring("opengl32.dll"))
   assert(opengl32dll != nil)
   gl.load_up_to(int(majorVersion), int(minorVersion), opengl_proc_address)
-  win32.FreeLibrary(opengl32dll)
 
   return openglContext, true
 }

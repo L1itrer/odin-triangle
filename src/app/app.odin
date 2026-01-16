@@ -20,7 +20,6 @@ update_and_render :: proc(winHeight, winWidth: i32)
   {
     init()
   }
-  gl.Viewport(0, 0, winWidth, winHeight);
   gl.ClearColor(0.1, 0.1, 0.1, 1.0)
   gl.Clear(u32(gl.GL_Enum.COLOR_BUFFER_BIT) | u32(gl.GL_Enum.DEPTH_BUFFER_BIT))
   gl.DrawArrays(cast(u32)gl.GL_Enum.TRIANGLES, 0, 3)
@@ -41,7 +40,7 @@ init :: proc()
   gl.AttachShader(shaderProgram, fragmentShader)
   gl.LinkProgram(shaderProgram)
   gl.DeleteShader(vertexShader)
-  gl.DeleteProgram(fragmentShader)
+  gl.DeleteShader(fragmentShader)
 
   // vertex array creation
   vao: u32

@@ -1,5 +1,6 @@
 package main
 
+import "base:runtime"
 import win32 "core:sys/windows"
 import gl "vendor:OpenGL"
 import "core:fmt"
@@ -7,6 +8,7 @@ import "core:c"
 import "app"
 
 gRunning: bool = true
+gInitedOpengl := false
 opengl32dll: win32.HMODULE
 
 WINDOW_WIDTH :: 800
@@ -59,8 +61,7 @@ win32_init_window :: proc(name: string, width, height: i32) -> (window: win32.HW
     dwExStyle = 0,
     lpClassName = windowClass.lpszClassName,
     lpWindowName = win32.utf8_to_wstring(name),
-    dwStyle = win32.WS_OVERLAPPED | win32.WS_VISIBLE | win32.WS_SYSMENU |
-      win32.WS_MINIMIZEBOX | win32.WS_MINIMIZEBOX | win32.WS_CAPTION,
+    dwStyle = win32.WS_OVERLAPPEDWINDOW | win32.WS_VISIBLE,
     X = win32.CW_USEDEFAULT, Y = win32.CW_USEDEFAULT,
     nWidth = width, nHeight = height,
     hWndParent = nil, hMenu = nil, hInstance = instance, lpParam = nil
@@ -83,9 +84,30 @@ win32_window_proc :: proc "stdcall" (windowHandle: win32.HWND, message: u32, wPa
     }
     case win32.WM_SIZE:
     {
+      if gInitedOpengl
+      {
+        rect: win32.RECT
+        win32.GetClientRect(windowHandle, &rect);
+        gl.Viewport(
+          rect.left,
+          rect.top,
+          rect.right - rect.left,
+          rect.bottom - rect.top,
+        );
+      }
     }
     case win32.WM_ACTIVATEAPP:
     {
+    }
+    case win32.WM_PAINT:
+    {
+      context = runtime.default_context()
+      paint: win32.PAINTSTRUCT
+      hdx := win32.BeginPaint(windowHandle, &paint)
+      rect: win32.RECT
+      win32.GetClientRect(windowHandle, &rect)
+      app.update_and_render(rect.right - rect.left, rect.bottom - rect.top)
+      win32.EndPaint(windowHandle, &paint)
     }
 
     case: 
@@ -198,6 +220,7 @@ win32_init_opengl :: proc(realDc: win32.HDC, majorVersion, minorVersion: c.int) 
   opengl32dll = win32.LoadLibraryW(win32.utf8_to_wstring("opengl32.dll"))
   assert(opengl32dll != nil)
   gl.load_up_to(int(majorVersion), int(minorVersion), opengl_proc_address)
+  gInitedOpengl = true
 
   return openglContext, true
 }

@@ -7,9 +7,16 @@ Shader :: u32
 
 @rodata
 verticies := [?]f32 {
-  -0.5, -0.5, 0.0,
-  0.5, -0.5, 0.0,
-  0.0, 0.5, 0.0
+  -0.5, -0.5, 0.0, // bottom left
+  -0.5,  0.5, 0.0, // top left
+   0.5, -0.5, 0.0, // bottom right
+   0.5,  0.5, 0.0, // top right
+}
+
+@rodata
+indecies := [?]u32 {
+  0, 1, 2,
+  1, 2, 3,
 }
 
 shaderProgram: Shader
@@ -22,7 +29,7 @@ update_and_render :: proc(winHeight, winWidth: i32)
   }
   gl.ClearColor(0.1, 0.1, 0.1, 1.0)
   gl.Clear(u32(gl.GL_Enum.COLOR_BUFFER_BIT) | u32(gl.GL_Enum.DEPTH_BUFFER_BIT))
-  gl.DrawArrays(cast(u32)gl.GL_Enum.TRIANGLES, 0, 3)
+  gl.DrawElements(cast(u32)gl.GL_Enum.TRIANGLES, 6, cast(u32)gl.GL_Enum.UNSIGNED_INT, rawptr(uintptr(0)))
 }
 
 init :: proc()
@@ -41,6 +48,8 @@ init :: proc()
   gl.LinkProgram(shaderProgram)
   gl.DeleteShader(vertexShader)
   gl.DeleteShader(fragmentShader)
+  // enable the shader
+  gl.UseProgram(shaderProgram)
 
   // vertex array creation
   vao: u32
@@ -52,11 +61,20 @@ init :: proc()
   // copy array into gpu memory
   gl.BindBuffer(cast(u32)gl.GL_Enum.ARRAY_BUFFER, vbo)
   gl.BufferData(cast(u32)gl.GL_Enum.ARRAY_BUFFER, size_of(verticies), &verticies, cast(u32)gl.GL_Enum.STATIC_DRAW)
+  // create element buffer object
+  // it specifies the order in which to draw to verticies
+  ebo: u32
+  gl.GenBuffers(1, &ebo)
+  gl.BindBuffer(cast(u32)gl.GL_Enum.ELEMENT_ARRAY_BUFFER, ebo)
+  gl.BufferData(cast(u32)gl.GL_Enum.ELEMENT_ARRAY_BUFFER, size_of(indecies), &indecies, cast(u32)gl.GL_Enum.STATIC_DRAW)
+
+
   // describe the data format
   gl.VertexAttribPointer(0, 3, cast(u32)gl.GL_Enum.FLOAT, gl.FALSE, 3 * size_of(f32), 0)
   gl.EnableVertexAttribArray(0)
-  // enable the shader
-  gl.UseProgram(shaderProgram)
+
+  // usefull for debugging, shows just frames of the triangles
+  //gl.PolygonMode(cast(u32)gl.GL_Enum.FRONT_AND_BACK, auto_cast gl.GL_Enum.LINE)
 }
 
 Shader_Kind :: enum u64 {

@@ -2,6 +2,7 @@ package app
 
 import gl "vendor:OpenGL"
 import "core:fmt"
+import "base:runtime"
 
 Shader :: u32
 
@@ -39,6 +40,46 @@ indecies1 := [?]u32 {
   2, 3, 4
 }
 
+gl_debug_output :: proc "c" (source: u32, type: u32, id: u32, severity: u32, length: i32, message: cstring, userParam: rawptr)
+{
+  context = runtime.default_context()
+  fmt.printfln("---GL DEBUG MSG ------", id)
+  fmt.printfln("  Message = %v, (code %v)", message, id)
+  switch source
+  {
+    case cast(u32)gl.GL_Enum.DEBUG_SOURCE_API: fmt.println("  Source = API")
+    case cast(u32)gl.GL_Enum.DEBUG_SOURCE_WINDOW_SYSTEM: fmt.println("  Source = WINDOW_SYSTEM")
+    case cast(u32)gl.GL_Enum.DEBUG_SOURCE_SHADER_COMPILER: fmt.println("  Source = SHADER_COMPILER")
+    case cast(u32)gl.GL_Enum.DEBUG_SOURCE_THIRD_PARTY: fmt.println("  Source = THIRD_PARTY")
+    case cast(u32)gl.GL_Enum.DEBUG_SOURCE_OTHER: fmt.println("  Source = OTHER")
+    case:
+    {
+      fmt.println("  Source = (unknown)")
+    }
+  }
+  switch type
+  {
+    case cast(u32)gl.GL_Enum.DEBUG_TYPE_ERROR:               fmt.println("  Type = Error")
+    case cast(u32)gl.GL_Enum.DEBUG_TYPE_DEPRECATED_BEHAVIOR: fmt.println("  Type = Deprecated Behaviour")
+    case cast(u32)gl.GL_Enum.DEBUG_TYPE_UNDEFINED_BEHAVIOR:  fmt.println("  Type = Undefined Behaviour")
+    case cast(u32)gl.GL_Enum.DEBUG_TYPE_PORTABILITY:         fmt.println("  Type = Portability")
+    case cast(u32)gl.GL_Enum.DEBUG_TYPE_PERFORMANCE:         fmt.println("  Type = Performance")
+    case cast(u32)gl.GL_Enum.DEBUG_TYPE_MARKER:              fmt.println("  Type = Marker")
+    case cast(u32)gl.GL_Enum.DEBUG_TYPE_PUSH_GROUP:          fmt.println("  Type = Push Group")
+    case cast(u32)gl.GL_Enum.DEBUG_TYPE_POP_GROUP:           fmt.println("  Type = Pop Group")
+    case cast(u32)gl.GL_Enum.DEBUG_TYPE_OTHER:               fmt.println("  Type = Other")
+  }
+  switch severity
+  {     
+    case cast(u32)gl.GL_Enum.DEBUG_SEVERITY_HIGH:         fmt.println("  Severity = high")
+    case cast(u32)gl.GL_Enum.DEBUG_SEVERITY_MEDIUM:       fmt.println("  Severity = medium")
+    case cast(u32)gl.GL_Enum.DEBUG_SEVERITY_LOW:          fmt.println("  Severity = low")
+    case cast(u32)gl.GL_Enum.DEBUG_SEVERITY_NOTIFICATION: fmt.println("  Severity = notification")
+  }
+  fmt.printfln("---GL DEBUG END ------", id)
+}
+
+
 update_and_render :: proc(statePtr: rawptr)
 {
   state : ^State = cast(^State)statePtr
@@ -53,10 +94,12 @@ render :: proc(state: ^State)
 {
   gl.ClearColor(0.1, 0.1, 0.1, 1.0)
   gl.Clear(u32(gl.GL_Enum.COLOR_BUFFER_BIT) | u32(gl.GL_Enum.DEPTH_BUFFER_BIT))
+
   gl.UseProgram(state.shaderProgram)
   gl.BindVertexArray(state.vao[0])
   gl.BindBuffer(cast(u32)gl.GL_Enum.ELEMENT_ARRAY_BUFFER, state.ebo[0])
   gl.DrawElements(cast(u32)gl.GL_Enum.TRIANGLES, 3, cast(u32)gl.GL_Enum.UNSIGNED_INT, rawptr(uintptr(0)))
+
   gl.UseProgram(state.alterShaderProgram)
   gl.BindVertexArray(state.vao[1])
   gl.BindBuffer(cast(u32)gl.GL_Enum.ELEMENT_ARRAY_BUFFER, state.ebo[1])
@@ -66,6 +109,22 @@ render :: proc(state: ^State)
 init :: proc(state: ^State)
 {
   state.initialized = true
+  flags: i32
+  gl.GetIntegerv(cast(u32)gl.GL_Enum.CONTEXT_FLAGS, &flags)
+  if bool(flags & cast(i32)gl.GL_Enum.CONTEXT_FLAG_DEBUG_BIT)
+  {
+    gl.Enable(cast(u32)gl.GL_Enum.DEBUG_OUTPUT)
+    gl.Enable(cast(u32)gl.GL_Enum.DEBUG_OUTPUT_SYNCHRONOUS)
+    gl.DebugMessageCallback(gl_debug_output, nil)
+    gl.DebugMessageControl(
+      source   = u32(gl.GL_Enum.DONT_CARE),
+      type     = u32(gl.GL_Enum.DONT_CARE),
+      severity = u32(gl.GL_Enum.DONT_CARE), 
+      count    = 0,
+      ids      = nil,
+      enabled  = true
+    )
+  }
   // shader compilation
   vertexShaderSource := #load("../resources/shaders/vertex.glsl", cstring)
   fragmentShaderSource := #load("../resources/shaders/fragment.glsl", cstring)

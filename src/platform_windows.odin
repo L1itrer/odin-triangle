@@ -24,8 +24,14 @@ main :: proc()
     return
   }
   dc := win32.GetDC(window)
-  glCtx, loaded_opengl := win32_init_opengl(dc, 3, 3)
+  glCtx, loaded_opengl := win32_init_opengl(dc, 4, 3)
   if !loaded_opengl do return
+  flags: i32
+  gl.GetIntegerv(cast(u32)gl.GL_Enum.CONTEXT_FLAGS, &flags)
+  if bool(flags & cast(i32)gl.GL_Enum.CONTEXT_FLAG_DEBUG_BIT)
+  {
+    fmt.println("can debug")
+  }
   free_all(context.temp_allocator)
   stateMemory, res := mem.alloc(app.STATE_UPPER_BOUND)
   assert(res == runtime.Allocator_Error.None)
@@ -188,9 +194,15 @@ win32_init_opengl :: proc(realDc: win32.HDC, majorVersion, minorVersion: c.int) 
   result = win32.SetPixelFormat(realDc, pixelFormat[0], &desiredPixelFormat)
   assert(bool(result), "Could not set pixel format")
 
+  contextFlags : i32 = 0
+  when ODIN_DEBUG
+  {
+    contextFlags |= win32.WGL_CONTEXT_DEBUG_BIT_ARB
+  }
   glAttribs := [?]c.int{
     win32.WGL_CONTEXT_MAJOR_VERSION_ARB, majorVersion,
     win32.WGL_CONTEXT_MINOR_VERSION_ARB, minorVersion,
+    win32.WGL_CONTEXT_FLAGS_ARB, contextFlags,
     win32.WGL_CONTEXT_PROFILE_MASK_ARB, win32.WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
     0
   }

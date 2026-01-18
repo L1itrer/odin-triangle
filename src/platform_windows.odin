@@ -1,11 +1,12 @@
 package main
 
-import "base:runtime"
 import win32 "core:sys/windows"
 import gl "vendor:OpenGL"
 import "core:fmt"
+import "base:runtime"
 import "core:c"
 import "app"
+import "core:mem"
 
 gRunning: bool = true
 gInitedOpengl := false
@@ -26,6 +27,8 @@ main :: proc()
   glCtx, loaded_opengl := win32_init_opengl(dc, 3, 3)
   if !loaded_opengl do return
   free_all(context.temp_allocator)
+  stateMemory, res := mem.alloc(app.STATE_UPPER_BOUND)
+  assert(res == runtime.Allocator_Error.None)
   mainLoop: for gRunning
   {
     message: win32.MSG
@@ -35,9 +38,10 @@ main :: proc()
       win32.TranslateMessage(&message)
       win32.DispatchMessageW(&message)
     }
-    app.update_and_render(WINDOW_HEIGHT, WINDOW_WIDTH)
+    app.update_and_render(stateMemory)
 
     win32.SwapBuffers(dc)
+    free_all(context.temp_allocator)
   }
 }
 
@@ -96,17 +100,10 @@ win32_window_proc :: proc "stdcall" (windowHandle: win32.HWND, message: u32, wPa
         );
       }
     }
-    case win32.WM_ACTIVATEAPP:
-    {
-    }
     case win32.WM_PAINT:
     {
-      context = runtime.default_context()
       paint: win32.PAINTSTRUCT
       hdx := win32.BeginPaint(windowHandle, &paint)
-      rect: win32.RECT
-      win32.GetClientRect(windowHandle, &rect)
-      app.update_and_render(rect.right - rect.left, rect.bottom - rect.top)
       win32.EndPaint(windowHandle, &paint)
     }
 

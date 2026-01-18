@@ -5,36 +5,55 @@ import "core:fmt"
 
 Shader :: u32
 
+State :: struct{
+  initialized: b32,
+  vao1, vao2, vbo1, vbo2 : u32,
+  shaderProgram: u32,
+  ebo: u32
+}
+
+STATE_UPPER_BOUND :: (64 * 1024)
+
+#assert(size_of(State) < STATE_UPPER_BOUND)
+
+YTOP :: 0.5
+YBOT :: -0.5
+
 @rodata
 verticies := [?]f32 {
-  -0.5, -0.5, 0.0, // bottom left
-  -0.5,  0.5, 0.0, // top left
-   0.5, -0.5, 0.0, // bottom right
-   0.5,  0.5, 0.0, // top right
+  -0.5, YBOT, 0.0, // bottom left
+  -0.25, YTOP, 0.0, // top left
+   0.0, YBOT, 0.0, // bottom middle
+   0.25, YTOP, 0.0, // right top
+   0.5, YBOT, 0.0, // right top
 }
 
 @rodata
 indecies := [?]u32 {
   0, 1, 2,
-  1, 2, 3,
+  2, 3, 4,
 }
 
-shaderProgram: Shader
-gInitialized: bool = false
-update_and_render :: proc(winHeight, winWidth: i32)
+update_and_render :: proc(statePtr: rawptr)
 {
-  if !gInitialized
+  state : ^State = cast(^State)statePtr
+  if !state.initialized
   {
-    init()
+    init(state)
   }
+  render(state)
+}
+
+render :: proc(state: ^State)
+{
   gl.ClearColor(0.1, 0.1, 0.1, 1.0)
   gl.Clear(u32(gl.GL_Enum.COLOR_BUFFER_BIT) | u32(gl.GL_Enum.DEPTH_BUFFER_BIT))
   gl.DrawElements(cast(u32)gl.GL_Enum.TRIANGLES, 6, cast(u32)gl.GL_Enum.UNSIGNED_INT, rawptr(uintptr(0)))
 }
 
-init :: proc()
+init :: proc(state: ^State)
 {
-  gInitialized = true
+  state.initialized = true
   // shader compilation
   vertexShaderSource := #load("../resources/shaders/vertex.glsl", cstring)
   fragmentShaderSource := #load("../resources/shaders/fragment.glsl", cstring)
@@ -42,7 +61,7 @@ init :: proc()
   assert(vok)
   fragmentShader, fok := shader_compile(fragmentShaderSource, Shader_Kind.FRAGMENT)
   assert(fok)
-  shaderProgram = gl.CreateProgram()
+  shaderProgram := gl.CreateProgram()
   gl.AttachShader(shaderProgram, vertexShader)
   gl.AttachShader(shaderProgram, fragmentShader)
   gl.LinkProgram(shaderProgram)
@@ -50,6 +69,7 @@ init :: proc()
   gl.DeleteShader(fragmentShader)
   // enable the shader
   gl.UseProgram(shaderProgram)
+  state.shaderProgram = shaderProgram
 
   // vertex array creation
   vao: u32

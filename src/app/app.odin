@@ -3,6 +3,7 @@ package app
 import gl "vendor:OpenGL"
 import "core:fmt"
 import "base:runtime"
+import "core:math"
 
 Shader :: u32
 
@@ -12,7 +13,8 @@ State :: struct{
   vbo: [2]u32,
   ebo: [2]u32,
   shaderProgram: u32,
-  alterShaderProgram: u32
+  alterShaderProgram: u32,
+  runningTimeSeconds: f32,
 }
 
 STATE_UPPER_BOUND :: (64 * 1024)
@@ -54,7 +56,7 @@ gl_debug_output :: proc "c" (source: u32, type: u32, id: u32, severity: u32, len
     case cast(u32)gl.GL_Enum.DEBUG_SOURCE_OTHER: fmt.println("  Source = OTHER")
     case:
     {
-      fmt.println("  Source = (unknown)")
+      fmt.printfln("  Source = (unknown) %v", source)
     }
   }
   switch type
@@ -77,16 +79,21 @@ gl_debug_output :: proc "c" (source: u32, type: u32, id: u32, severity: u32, len
     case cast(u32)gl.GL_Enum.DEBUG_SEVERITY_NOTIFICATION: fmt.println("  Severity = notification")
   }
   fmt.printfln("---GL DEBUG END ------", id)
+  if severity != cast(u32)gl.GL_Enum.DEBUG_SEVERITY_LOW || severity != cast(u32)gl.GL_Enum.DEBUG_SEVERITY_NOTIFICATION
+  {
+    runtime.debug_trap()
+  }
 }
 
 
-update_and_render :: proc(statePtr: rawptr)
+update_and_render :: proc(statePtr: rawptr, dt: f32)
 {
   state : ^State = cast(^State)statePtr
   if !state.initialized
   {
     init(state)
   }
+  state.runningTimeSeconds += dt
   render(state)
 }
 
@@ -100,7 +107,10 @@ render :: proc(state: ^State)
   gl.BindBuffer(cast(u32)gl.GL_Enum.ELEMENT_ARRAY_BUFFER, state.ebo[0])
   gl.DrawElements(cast(u32)gl.GL_Enum.TRIANGLES, 3, cast(u32)gl.GL_Enum.UNSIGNED_INT, rawptr(uintptr(0)))
 
+  greenValue := (math.sin_f32(state.runningTimeSeconds) + 1.0) / 2.0
+  vertexColorLocation := gl.GetUniformLocation(state.alterShaderProgram, "ourColor")
   gl.UseProgram(state.alterShaderProgram)
+  gl.Uniform4f(vertexColorLocation, 0.0, greenValue, 0.0, 1.0)
   gl.BindVertexArray(state.vao[1])
   gl.BindBuffer(cast(u32)gl.GL_Enum.ELEMENT_ARRAY_BUFFER, state.ebo[1])
   gl.DrawElements(cast(u32)gl.GL_Enum.TRIANGLES, 3, cast(u32)gl.GL_Enum.UNSIGNED_INT, rawptr(uintptr(0)))

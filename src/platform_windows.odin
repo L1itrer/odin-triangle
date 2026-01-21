@@ -14,6 +14,7 @@ opengl32dll: win32.HMODULE
 
 WINDOW_WIDTH :: 800
 WINDOW_HEIGHT :: 600
+TARGET_MS_PER_FRAME :: 16
 
 main :: proc()
 {
@@ -26,28 +27,40 @@ main :: proc()
   dc := win32.GetDC(window)
   glCtx, loaded_opengl := win32_init_opengl(dc, 4, 3)
   if !loaded_opengl do return
-  flags: i32
-  gl.GetIntegerv(cast(u32)gl.GL_Enum.CONTEXT_FLAGS, &flags)
-  if bool(flags & cast(i32)gl.GL_Enum.CONTEXT_FLAG_DEBUG_BIT)
-  {
-    fmt.println("can debug")
-  }
   free_all(context.temp_allocator)
   stateMemory, res := mem.alloc(app.STATE_UPPER_BOUND)
   assert(res == runtime.Allocator_Error.None)
+  perfFrequency: win32.LARGE_INTEGER
+  win32.QueryPerformanceFrequency(&perfFrequency)
+  lastTime, endTime: win32.LARGE_INTEGER
+  dt: f32
+  win32.QueryPerformanceCounter(&lastTime)
   mainLoop: for gRunning
   {
     message: win32.MSG
     for win32.PeekMessageW(&message, nil, 0, 0, win32.PM_REMOVE)
     {
-      if message.message == win32.WM_QUIT do gRunning = false
+      if message.message == win32.WM_QUIT || message.message == win32.WM_CLOSE || message.message == win32.WM_DESTROY
+      {
+        gRunning = false
+      }
       win32.TranslateMessage(&message)
       win32.DispatchMessageW(&message)
     }
-    app.update_and_render(stateMemory)
+    app.update_and_render(stateMemory, dt)
 
     win32.SwapBuffers(dc)
     free_all(context.temp_allocator)
+    win32.QueryPerformanceCounter(&endTime)
+    rawTimeElapsed := endTime - lastTime;
+    dt = cast(f32)rawTimeElapsed/cast(f32)perfFrequency
+    msPerFrame := dt * 1000.0
+    if cast(win32.DWORD)msPerFrame < TARGET_MS_PER_FRAME
+    {
+      sleepTime := cast(win32.DWORD)(TARGET_MS_PER_FRAME - cast(win32.DWORD)msPerFrame)
+      win32.Sleep(sleepTime)
+    }
+    win32.QueryPerformanceCounter(&lastTime)
   }
 }
 
@@ -88,7 +101,7 @@ win32_window_proc :: proc "stdcall" (windowHandle: win32.HWND, message: u32, wPa
   result : win32.LRESULT
   switch message
   {
-    case win32.WM_DESTROY, win32.WM_CLOSE:
+    case win32.WM_DESTROY, win32.WM_CLOSE, win32.WM_QUIT:
     {
       gRunning = false
     }

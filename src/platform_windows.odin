@@ -32,9 +32,10 @@ main :: proc()
   assert(res == runtime.Allocator_Error.None)
   perfFrequency: win32.LARGE_INTEGER
   win32.QueryPerformanceFrequency(&perfFrequency)
-  lastTime, endTime: win32.LARGE_INTEGER
+  lastTime, endTime, lastWorkTime: win32.LARGE_INTEGER
   dt: f32
   win32.QueryPerformanceCounter(&lastTime)
+  lastWorkTime = lastTime
   mainLoop: for gRunning
   {
     message: win32.MSG
@@ -53,14 +54,16 @@ main :: proc()
     free_all(context.temp_allocator)
     win32.QueryPerformanceCounter(&endTime)
     rawTimeElapsed := endTime - lastTime;
+    workTimeElapsed := endTime - lastWorkTime
     dt = cast(f32)rawTimeElapsed/cast(f32)perfFrequency
-    msPerFrame := dt * 1000.0
+    msPerFrame := (cast(f32)workTimeElapsed/cast(f32)perfFrequency) * 1000.0
     if cast(win32.DWORD)msPerFrame < TARGET_MS_PER_FRAME
     {
       sleepTime := cast(win32.DWORD)(TARGET_MS_PER_FRAME - cast(win32.DWORD)msPerFrame)
       win32.Sleep(sleepTime)
     }
-    win32.QueryPerformanceCounter(&lastTime)
+    win32.QueryPerformanceCounter(&lastWorkTime)
+    lastTime = endTime
   }
 }
 

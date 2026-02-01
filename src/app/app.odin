@@ -9,11 +9,10 @@ Shader :: u32
 
 State :: struct{
   initialized: b32,
-  vao: [2]u32,
-  vbo: [2]u32,
+  vao: [3]u32,
+  vbo: [3]u32,
   ebo: [2]u32,
-  shaderProgram: u32,
-  alterShaderProgram: u32,
+  shaders: [3]u32,
   runningTimeSeconds: f32,
 }
 
@@ -33,11 +32,22 @@ verticies := [?]f32 {
    0.5, YBOT, 0.0, // right top
 }
 
+  // positions          colors
+alterVerticies := [?] f32 {
+//         0.5 , -0.5 , 0.0 ,  1.0 , 0.0 , 0.0 ,  // bottom right
+//        -0.5 , -0.5 , 0.0 ,  0.0 , 1.0 , 0.0 ,  // bottom le t
+//         0.0 ,  0.5 , 0.0 ,  0.0 , 0.0 , 1.0    // top 
+  0.0,  YBOT, 0.0,     0.0, 1.0, 0.0, // bottom middle
+  0.25, YTOP, 0.0,     0.0, 0.0, 1.0, // right top
+  -0.25, YTOP, 0.0,     1.0, 0.0, 0.0, // top left
+}
+
 @rodata
 indecies0 := [?]u32 {
   0, 1, 2,
 }
 
+@rodata
 indecies1 := [?]u32 {
   2, 3, 4
 }
@@ -81,7 +91,7 @@ gl_debug_output :: proc "c" (source: u32, type: u32, id: u32, severity: u32, len
   fmt.printfln("---GL DEBUG END ------", id)
   if severity != cast(u32)gl.GL_Enum.DEBUG_SEVERITY_LOW || severity != cast(u32)gl.GL_Enum.DEBUG_SEVERITY_NOTIFICATION
   {
-    runtime.debug_trap()
+    ;
   }
 }
 
@@ -102,18 +112,20 @@ render :: proc(state: ^State)
   gl.ClearColor(0.1, 0.1, 0.1, 1.0)
   gl.Clear(u32(gl.GL_Enum.COLOR_BUFFER_BIT) | u32(gl.GL_Enum.DEPTH_BUFFER_BIT))
 
-  gl.UseProgram(state.shaderProgram)
+  gl.UseProgram(state.shaders[0])
   gl.BindVertexArray(state.vao[0])
-  gl.BindBuffer(cast(u32)gl.GL_Enum.ELEMENT_ARRAY_BUFFER, state.ebo[0])
   gl.DrawElements(cast(u32)gl.GL_Enum.TRIANGLES, 3, cast(u32)gl.GL_Enum.UNSIGNED_INT, rawptr(uintptr(0)))
 
   greenValue := (math.sin_f32(state.runningTimeSeconds) + 1.0) / 2.0
-  vertexColorLocation := gl.GetUniformLocation(state.alterShaderProgram, "ourColor")
-  gl.UseProgram(state.alterShaderProgram)
+  vertexColorLocation := gl.GetUniformLocation(state.shaders[1], "ourColor")
+  gl.UseProgram(state.shaders[1])
   gl.Uniform4f(vertexColorLocation, 0.0, greenValue, 0.0, 1.0)
   gl.BindVertexArray(state.vao[1])
-  gl.BindBuffer(cast(u32)gl.GL_Enum.ELEMENT_ARRAY_BUFFER, state.ebo[1])
   gl.DrawElements(cast(u32)gl.GL_Enum.TRIANGLES, 3, cast(u32)gl.GL_Enum.UNSIGNED_INT, rawptr(uintptr(0)))
+
+  gl.UseProgram(state.shaders[2])
+  gl.BindVertexArray(state.vao[2])
+  gl.DrawArrays(cast(u32)gl.GL_Enum.TRIANGLES, 0, 3)
 }
 
 init :: proc(state: ^State)
@@ -139,25 +151,31 @@ init :: proc(state: ^State)
   vertexShaderSource := #load("../resources/shaders/vertex.glsl", cstring)
   fragmentShaderSource := #load("../resources/shaders/fragment.glsl", cstring)
   fragalterShaderSource := #load("../resources/shaders/fragalter.glsl", cstring)
+
+  vertexRainbowSource := #load("../resources/shaders/rainbow_vert.glsl", cstring)
+  fragmentRainbowSource := #load("../resources/shaders/rainbow_frag.glsl", cstring)
   shaderProgram, ok := shader_create(vertexShaderSource, fragmentShaderSource)
   assert(ok)
   alterShaderProgram, aok := shader_create(vertexShaderSource, fragalterShaderSource)
   assert(aok)
+  rainbowShaderProgram, rok := shader_create(vertexRainbowSource, fragmentRainbowSource)
+  assert(rok)
 
   // enable the shader
   gl.UseProgram(shaderProgram)
-  state.shaderProgram = shaderProgram
-  state.alterShaderProgram = alterShaderProgram
+  state.shaders[0] = shaderProgram
+  state.shaders[1] = alterShaderProgram
+  state.shaders[2] = rainbowShaderProgram
 
   // vertex array creation
-  vao: [2]u32
-  gl.GenVertexArrays(2, raw_data(vao[:]))
+  vao: [3]u32
+  gl.GenVertexArrays(len(vao), raw_data(vao[:]))
   // buffer creation
-  vbo: [2]u32
-  gl.GenBuffers(2, raw_data(vbo[:]))
+  vbo: [3]u32
+  gl.GenBuffers(len(vbo), raw_data(vbo[:]))
 
   ebo: [2]u32
-  gl.GenBuffers(2, raw_data(ebo[:]))
+  gl.GenBuffers(len(ebo), raw_data(ebo[:]))
   // copy array into gpu memory
   gl.BindVertexArray(vao[0])
   gl.BindBuffer(cast(u32)gl.GL_Enum.ARRAY_BUFFER, vbo[0])
@@ -175,6 +193,20 @@ init :: proc(state: ^State)
   gl.VertexAttribPointer(0, 3, cast(u32)gl.GL_Enum.FLOAT, gl.FALSE, 3 * size_of(f32), 0)
   gl.EnableVertexAttribArray(0)
 
+  gl.BindVertexArray(vao[2])
+  gl.BindBuffer(cast(u32)gl.GL_Enum.ARRAY_BUFFER, vbo[2])
+  gl.BufferData(
+    cast(u32)gl.GL_Enum.ARRAY_BUFFER,
+    size_of(alterVerticies),
+    &alterVerticies,
+    cast(u32)gl.GL_Enum.STATIC_DRAW
+  );
+  gl.UseProgram(state.shaders[2])
+  gl.VertexAttribPointer(0, 3, cast(u32)gl.GL_Enum.FLOAT, gl.FALSE, 6 * size_of(f32), 0)
+  gl.VertexAttribPointer(1, 3, cast(u32)gl.GL_Enum.FLOAT, gl.FALSE, 6 * size_of(f32), 3*size_of(f32))
+  gl.EnableVertexAttribArray(0)
+  gl.EnableVertexAttribArray(1)
+
   state.ebo = ebo
   state.vbo = vbo
   state.vao = vao
@@ -182,7 +214,7 @@ init :: proc(state: ^State)
 
 
   // usefull for debugging, shows just frames of the triangles
-  //gl.PolygonMode(cast(u32)gl.GL_Enum.FRONT_AND_BACK, auto_cast gl.GL_Enum.LINE)
+  // gl.PolygonMode(cast(u32)gl.GL_Enum.FRONT_AND_BACK, auto_cast gl.GL_Enum.LINE)
 }
 
 Shader_Kind :: enum u64 {

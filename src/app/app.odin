@@ -124,6 +124,14 @@ render :: proc(state: ^State)
   gl.DrawElements(cast(u32)gl.GL_Enum.TRIANGLES, 3, cast(u32)gl.GL_Enum.UNSIGNED_INT, rawptr(uintptr(0)))
 
   gl.UseProgram(state.shaders[2])
+  gl.Uniform2f(
+      gl.GetUniformLocation(
+        state.shaders[2],
+        cast(cstring)"offset"
+      ),
+      -0.1,
+      0.1
+  )
   gl.BindVertexArray(state.vao[2])
   gl.DrawArrays(cast(u32)gl.GL_Enum.TRIANGLES, 0, 3)
 }

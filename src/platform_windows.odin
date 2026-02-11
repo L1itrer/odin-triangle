@@ -39,6 +39,7 @@ Win32WindowStyle :: struct
   lpParam:win32.LPVOID
 }
 
+
 main :: proc()
 {
   serviceWindowClass: win32.WNDCLASSEXW = {
@@ -189,6 +190,7 @@ win32_main_thread_entry :: proc "std" (param: rawptr) -> u32
 
   }
   win32.ExitProcess(0)
+  //os.exit(0)
 }
 
 
@@ -392,3 +394,4 @@ win32_init_opengl :: proc(realDc: win32.HDC, majorVersion, minorVersion: c.int) 
 
   return openglContext, true
 }
+

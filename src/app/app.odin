@@ -4,17 +4,21 @@ import gl "vendor:OpenGL"
 import "core:fmt"
 import "base:runtime"
 import "core:math"
+import stbi "vendor:stb/image"
+import "core:c"
 
 Shader :: u32
 
 State :: struct{
   initialized: b32,
-  vao: [3]u32,
-  vbo: [3]u32,
-  ebo: [2]u32,
+  vao: [1]u32,
+  vbo: [1]u32,
+  ebo: [1]u32,
+  texture: u32,
   shaders: [3]u32,
   runningTimeSeconds: f32,
 }
+
 
 STATE_UPPER_BOUND :: (64 * 1024)
 
@@ -33,13 +37,14 @@ verticies := [?]f32 {
 }
 
   // positions          colors
+@rodata
 alterVerticies := [?] f32 {
 //         0.5 , -0.5 , 0.0 ,  1.0 , 0.0 , 0.0 ,  // bottom right
 //        -0.5 , -0.5 , 0.0 ,  0.0 , 1.0 , 0.0 ,  // bottom le t
 //         0.0 ,  0.5 , 0.0 ,  0.0 , 0.0 , 1.0    // top 
-  0.0,  YBOT, 0.0,     0.0, 1.0, 0.0, // bottom middle
-  0.25, YTOP, 0.0,     0.0, 0.0, 1.0, // right top
-  -0.25, YTOP, 0.0,     1.0, 0.0, 0.0, // top left
+  -0.75, YBOT, 0.0,     0.0, 1.0, 0.0, // bottom middle
+  -0.5, YTOP, 0.0,     0.0, 0.0, 1.0, // right top
+  -1.0, YTOP, 0.0,     1.0, 0.0, 0.0, // top left
 }
 
 @rodata
@@ -50,6 +55,22 @@ indecies0 := [?]u32 {
 @rodata
 indecies1 := [?]u32 {
   2, 3, 4
+}
+
+
+// positions, colors, tex coords
+@rodata
+texturedVerticies := [?] f32 {
+     0.5,  0.5, 0.0,   1.0, 0.0, 0.0,   1.0, 1.0,   // top right
+     0.5, -0.5, 0.0,   0.0, 1.0, 0.0,   1.0, 0.0,   // bottom right
+    -0.5, -0.5, 0.0,   0.0, 0.0, 1.0,   0.0, 0.0,   // bottom let
+    -0.5,  0.5, 0.0,   1.0, 1.0, 0.0,   0.0, 1.0    // top let
+}
+
+@rodata
+texturedIndecies := [?]u32 {
+  0, 1, 3,
+  1, 2, 3
 }
 
 gl_debug_output :: proc "c" (source: u32, type: u32, id: u32, severity: u32, length: i32, message: cstring, userParam: rawptr)
@@ -112,29 +133,26 @@ render :: proc(state: ^State)
   gl.ClearColor(0.1, 0.1, 0.1, 1.0)
   gl.Clear(u32(gl.GL_Enum.COLOR_BUFFER_BIT) | u32(gl.GL_Enum.DEPTH_BUFFER_BIT))
 
-  gl.UseProgram(state.shaders[0])
-  gl.BindVertexArray(state.vao[0])
-  gl.DrawElements(cast(u32)gl.GL_Enum.TRIANGLES, 3, cast(u32)gl.GL_Enum.UNSIGNED_INT, rawptr(uintptr(0)))
+  gl.ActiveTexture(cast(u32)gl.GL_Enum.TEXTURE0)
+  gl.BindTexture(cast(u32)gl.GL_Enum.TEXTURE_2D, state.texture)
 
-  greenValue := (math.sin_f32(state.runningTimeSeconds) + 1.0) / 2.0
-  vertexColorLocation := gl.GetUniformLocation(state.shaders[1], "ourColor")
-  gl.UseProgram(state.shaders[1])
-  gl.Uniform4f(vertexColorLocation, 0.0, greenValue, 0.0, 1.0)
-  gl.BindVertexArray(state.vao[1])
-  gl.DrawElements(cast(u32)gl.GL_Enum.TRIANGLES, 3, cast(u32)gl.GL_Enum.UNSIGNED_INT, rawptr(uintptr(0)))
-
+  dtColor := (math.sin_f32(state.runningTimeSeconds) + 1.0) / 2.0
   gl.UseProgram(state.shaders[2])
+  vertexColorLocation := gl.GetUniformLocation(state.shaders[2], "dtColor")
+  gl.Uniform4f(vertexColorLocation, dtColor, dtColor, dtColor, 1.0)
   gl.Uniform2f(
       gl.GetUniformLocation(
         state.shaders[2],
         cast(cstring)"offset"
       ),
-      -0.1,
-      0.1
+      0.0,
+      0.0
   )
-  gl.BindVertexArray(state.vao[2])
-  gl.DrawArrays(cast(u32)gl.GL_Enum.TRIANGLES, 0, 3)
+  gl.BindVertexArray(state.vao[0])
+  gl.DrawElements(cast(u32)gl.GL_Enum.TRIANGLES, 6, cast(u32)gl.GL_Enum.UNSIGNED_INT, nil)
 }
+
+woodenContainerBytes := #load("../resources/images/container.jpg")
 
 init :: proc(state: ^State)
 {
@@ -169,55 +187,98 @@ init :: proc(state: ^State)
   rainbowShaderProgram, rok := shader_create(vertexRainbowSource, fragmentRainbowSource)
   assert(rok)
 
+
+
   // enable the shader
-  gl.UseProgram(shaderProgram)
+  gl.UseProgram(rainbowShaderProgram)
   state.shaders[0] = shaderProgram
   state.shaders[1] = alterShaderProgram
   state.shaders[2] = rainbowShaderProgram
 
+
+
+
   // vertex array creation
-  vao: [3]u32
+  vao: [1]u32
   gl.GenVertexArrays(len(vao), raw_data(vao[:]))
   // buffer creation
-  vbo: [3]u32
+  vbo: [1]u32
   gl.GenBuffers(len(vbo), raw_data(vbo[:]))
 
-  ebo: [2]u32
+  ebo: [1]u32
   gl.GenBuffers(len(ebo), raw_data(ebo[:]))
   // copy array into gpu memory
+
   gl.BindVertexArray(vao[0])
   gl.BindBuffer(cast(u32)gl.GL_Enum.ARRAY_BUFFER, vbo[0])
-  gl.BufferData(cast(u32)gl.GL_Enum.ARRAY_BUFFER, size_of(verticies), &verticies, cast(u32)gl.GL_Enum.STATIC_DRAW)
-  gl.BindBuffer(cast(u32)gl.GL_Enum.ELEMENT_ARRAY_BUFFER, ebo[0])
-  gl.BufferData(cast(u32)gl.GL_Enum.ELEMENT_ARRAY_BUFFER, size_of(indecies0), &indecies0, cast(u32)gl.GL_Enum.STATIC_DRAW)
-  gl.VertexAttribPointer(0, 3, cast(u32)gl.GL_Enum.FLOAT, gl.FALSE, 3 * size_of(f32), 0)
-  gl.EnableVertexAttribArray(0)
-
-  gl.BindVertexArray(vao[1])
-  gl.BindBuffer(cast(u32)gl.GL_Enum.ARRAY_BUFFER, vbo[1])
-  gl.BufferData(cast(u32)gl.GL_Enum.ARRAY_BUFFER, size_of(verticies), &verticies, cast(u32)gl.GL_Enum.STATIC_DRAW)
-  gl.BindBuffer(cast(u32)gl.GL_Enum.ELEMENT_ARRAY_BUFFER, ebo[1])
-  gl.BufferData(cast(u32)gl.GL_Enum.ELEMENT_ARRAY_BUFFER, size_of(indecies1), &indecies1, cast(u32)gl.GL_Enum.STATIC_DRAW)
-  gl.VertexAttribPointer(0, 3, cast(u32)gl.GL_Enum.FLOAT, gl.FALSE, 3 * size_of(f32), 0)
-  gl.EnableVertexAttribArray(0)
-
-  gl.BindVertexArray(vao[2])
-  gl.BindBuffer(cast(u32)gl.GL_Enum.ARRAY_BUFFER, vbo[2])
   gl.BufferData(
-    cast(u32)gl.GL_Enum.ARRAY_BUFFER,
-    size_of(alterVerticies),
-    &alterVerticies,
-    cast(u32)gl.GL_Enum.STATIC_DRAW
-  );
-  gl.UseProgram(state.shaders[2])
-  gl.VertexAttribPointer(0, 3, cast(u32)gl.GL_Enum.FLOAT, gl.FALSE, 6 * size_of(f32), 0)
-  gl.VertexAttribPointer(1, 3, cast(u32)gl.GL_Enum.FLOAT, gl.FALSE, 6 * size_of(f32), 3*size_of(f32))
-  gl.EnableVertexAttribArray(0)
-  gl.EnableVertexAttribArray(1)
+      cast(u32)gl.GL_Enum.ARRAY_BUFFER,
+      size_of(texturedVerticies),
+      &texturedVerticies,
+      cast(u32)gl.GL_Enum.STATIC_DRAW
+  )
+  gl.BindBuffer(cast(u32)gl.GL_Enum.ELEMENT_ARRAY_BUFFER, ebo[0])
+  gl.BufferData(cast(u32)gl.GL_Enum.ELEMENT_ARRAY_BUFFER, size_of(texturedIndecies), &texturedIndecies, cast(u32)gl.GL_Enum.STATIC_DRAW)
+  gl.VertexAttribPointer(0, 3, cast(u32)gl.GL_Enum.FLOAT, gl.FALSE, 8 * size_of(f32), 0)
+    gl.EnableVertexAttribArray(0)
+  gl.VertexAttribPointer(1, 3, cast(u32)gl.GL_Enum.FLOAT, gl.FALSE, 8 * size_of(f32), 3*size_of(f32))
+    gl.EnableVertexAttribArray(1)
+  gl.VertexAttribPointer(2, 2, cast(u32)gl.GL_Enum.FLOAT, gl.FALSE, 8 * size_of(f32), 6*size_of(f32))
+  gl.EnableVertexAttribArray(2)
+  
 
   state.ebo = ebo
   state.vbo = vbo
   state.vao = vao
+
+
+  w, h, nChannels: c.int = ---, ---, ---
+  loadedImageBytes := stbi.load_from_memory(
+      raw_data(woodenContainerBytes[:]),
+      cast(c.int)len(woodenContainerBytes[:]),
+      &w, &h, &nChannels, 0
+  )
+  defer stbi.image_free(loadedImageBytes)
+
+  texture: u32 = ---
+  gl.GenTextures(1, &texture)
+  gl.BindTexture(cast(u32)gl.GL_Enum.TEXTURE_2D, texture)
+  gl.TexImage2D(
+    target = cast(u32)gl.GL_Enum.TEXTURE_2D,
+    level = 0,
+    internalformat = cast(i32)gl.GL_Enum.RGB,
+    width = w,
+    height = h,
+    border = 0, // lgeacy stuff
+    format = cast(u32)gl.GL_Enum.RGB,
+    type = cast(u32)gl.GL_Enum.UNSIGNED_BYTE,
+    pixels = loadedImageBytes
+  )
+  gl.GenerateMipmap(cast(u32)gl.GL_Enum.TEXTURE_2D)
+
+
+  gl.TexParameteri(
+      cast(u32)gl.GL_Enum.TEXTURE_2D,
+      cast(u32)gl.GL_Enum.TEXTURE_WRAP_S,
+      cast(i32)gl.GL_Enum.REPEAT
+  )
+  gl.TexParameteri(
+      cast(u32)gl.GL_Enum.TEXTURE_2D,
+      cast(u32)gl.GL_Enum.TEXTURE_WRAP_T,
+      cast(i32)gl.GL_Enum.REPEAT
+  )
+  gl.TexParameteri(
+      cast(u32)gl.GL_Enum.TEXTURE_2D,
+      cast(u32)gl.GL_Enum.TEXTURE_MIN_FILTER,
+      cast(i32)gl.GL_Enum.LINEAR_MIPMAP_LINEAR
+  )
+  gl.TexParameteri(
+      cast(u32)gl.GL_Enum.TEXTURE_2D,
+      cast(u32)gl.GL_Enum.TEXTURE_MIN_FILTER,
+      cast(i32)gl.GL_Enum.LINEAR
+  )
+
+  state.texture = texture
 
 
 
@@ -253,7 +314,8 @@ shader_create :: proc(vertexSource: cstring, fragmentSource: cstring) -> (shader
   shader = gl.CreateProgram()
   vertexShader, vok := shader_compile(vertexSource, Shader_Kind.VERTEX)
   fragmentShader, fok := shader_compile(fragmentSource, Shader_Kind.FRAGMENT)
-  if vok && fok
+  ok = vok && fok
+  if ok
   {
     gl.AttachShader(shader, vertexShader)
     gl.AttachShader(shader, fragmentShader)
@@ -266,7 +328,7 @@ shader_create :: proc(vertexSource: cstring, fragmentSource: cstring) -> (shader
     gl.DeleteProgram(shader)
     shader = 0
   }
-  return shader, vok && fok
+  return shader, ok
 }
 
 

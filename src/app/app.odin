@@ -14,7 +14,7 @@ State :: struct{
   vao: [1]u32,
   vbo: [1]u32,
   ebo: [1]u32,
-  texture: u32,
+  textures : [2]Texture,
   shaders: [3]u32,
   runningTimeSeconds: f32,
 }
@@ -112,7 +112,7 @@ gl_debug_output :: proc "c" (source: u32, type: u32, id: u32, severity: u32, len
   fmt.printfln("---GL DEBUG END ------", id)
   if severity != cast(u32)gl.GL_Enum.DEBUG_SEVERITY_LOW || severity != cast(u32)gl.GL_Enum.DEBUG_SEVERITY_NOTIFICATION
   {
-    ;
+    fmt.println("serous bug")
   }
 }
 
@@ -134,12 +134,13 @@ render :: proc(state: ^State)
   gl.Clear(u32(gl.GL_Enum.COLOR_BUFFER_BIT) | u32(gl.GL_Enum.DEPTH_BUFFER_BIT))
 
   gl.ActiveTexture(cast(u32)gl.GL_Enum.TEXTURE0)
-  gl.BindTexture(cast(u32)gl.GL_Enum.TEXTURE_2D, state.texture)
+  gl.BindTexture(cast(u32)gl.GL_Enum.TEXTURE_2D, cast(u32)state.textures[0])
+  gl.ActiveTexture(cast(u32)gl.GL_Enum.TEXTURE1)
+  gl.BindTexture(cast(u32)gl.GL_Enum.TEXTURE_2D, cast(u32)state.textures[1])
 
   dtColor := (math.sin_f32(state.runningTimeSeconds) + 1.0) / 2.0
   gl.UseProgram(state.shaders[2])
-  vertexColorLocation := gl.GetUniformLocation(state.shaders[2], "dtColor")
-  gl.Uniform4f(vertexColorLocation, dtColor, dtColor, dtColor, 1.0)
+  shader_set(state.shaders[2], "dtColor", dtColor, dtColor, dtColor, 1.0)
   gl.Uniform2f(
       gl.GetUniformLocation(
         state.shaders[2],
@@ -148,11 +149,14 @@ render :: proc(state: ^State)
       0.0,
       0.0
   )
+  shader_set(state.shaders[2], "texture1", 0)
+  shader_set(state.shaders[2], "texture2", 1)
   gl.BindVertexArray(state.vao[0])
   gl.DrawElements(cast(u32)gl.GL_Enum.TRIANGLES, 6, cast(u32)gl.GL_Enum.UNSIGNED_INT, nil)
 }
 
 woodenContainerBytes := #load("../resources/images/container.jpg")
+awesomefaceBytes := #load("../resources/images/awesomeface.png")
 
 init :: proc(state: ^State)
 {
@@ -232,25 +236,42 @@ init :: proc(state: ^State)
   state.vao = vao
 
 
+
+  state.textures[0] = texture_load(woodenContainerBytes[:])
+  state.textures[1] = texture_load(awesomefaceBytes[:], true)
+
+
+
+
+  // usefull for debugging, shows just frames of the triangles
+  // gl.PolygonMode(cast(u32)gl.GL_Enum.FRONT_AND_BACK, auto_cast gl.GL_Enum.LINE)
+}
+
+Texture :: distinct u32
+
+texture_load :: proc(imageBytes: []u8, flipImage: bool = false) -> Texture
+{
+  texture: u32 = ---
   w, h, nChannels: c.int = ---, ---, ---
+  stbi.set_flip_vertically_on_load(cast(c.int)flipImage)
   loadedImageBytes := stbi.load_from_memory(
-      raw_data(woodenContainerBytes[:]),
-      cast(c.int)len(woodenContainerBytes[:]),
+      raw_data(imageBytes[:]),
+      cast(c.int)len(imageBytes[:]),
       &w, &h, &nChannels, 0
   )
+  stbi.set_flip_vertically_on_load(0)
   defer stbi.image_free(loadedImageBytes)
-
-  texture: u32 = ---
   gl.GenTextures(1, &texture)
   gl.BindTexture(cast(u32)gl.GL_Enum.TEXTURE_2D, texture)
+  internalFormat : i32 = nChannels == 3 ? cast(i32)gl.GL_Enum.RGB : cast(i32)gl.GL_Enum.RGBA
   gl.TexImage2D(
     target = cast(u32)gl.GL_Enum.TEXTURE_2D,
     level = 0,
-    internalformat = cast(i32)gl.GL_Enum.RGB,
+    internalformat = internalFormat,
     width = w,
     height = h,
     border = 0, // lgeacy stuff
-    format = cast(u32)gl.GL_Enum.RGB,
+    format = cast(u32)internalFormat,
     type = cast(u32)gl.GL_Enum.UNSIGNED_BYTE,
     pixels = loadedImageBytes
   )
@@ -277,13 +298,7 @@ init :: proc(state: ^State)
       cast(u32)gl.GL_Enum.TEXTURE_MIN_FILTER,
       cast(i32)gl.GL_Enum.LINEAR
   )
-
-  state.texture = texture
-
-
-
-  // usefull for debugging, shows just frames of the triangles
-  // gl.PolygonMode(cast(u32)gl.GL_Enum.FRONT_AND_BACK, auto_cast gl.GL_Enum.LINE)
+  return cast(Texture)texture
 }
 
 Shader_Kind :: enum u64 {
@@ -331,4 +346,27 @@ shader_create :: proc(vertexSource: cstring, fragmentSource: cstring) -> (shader
   return shader, ok
 }
 
+shader_set :: proc{
+  shader_set_i32,
+  shader_set_f32,
+  shader_set_v4f,
+}
 
+shader_set_i32 :: proc(shader: Shader, name: cstring, val: i32)
+{
+  gl.Uniform1i(gl.GetUniformLocation(shader, name), val)
+}
+
+shader_set_f32 :: proc(shader: Shader, name: cstring, val: f32)
+{
+  gl.Uniform1f(gl.GetUniformLocation(shader, name), val)
+}
+
+shader_set_v4f :: proc(shader: Shader, name: cstring, x, y, z, w: f32)
+{
+  gl.Uniform4f(gl.GetUniformLocation(shader, name), x, y, z, w)
+}
+shader_set_v2f :: proc(shader: Shader, name: cstring, x, y: f32)
+{
+  gl.Uniform2f(gl.GetUniformLocation(shader, name), x, y)
+}

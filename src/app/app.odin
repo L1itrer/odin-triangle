@@ -19,6 +19,7 @@ State :: struct{
   shaders: [3]u32,
   runningTimeSeconds: f32,
   faceVisibility: f32,
+  offx, offy: f32,
 }
 
 Input_Key :: struct{
@@ -144,6 +145,8 @@ update :: proc(state: ^State, input: ^Input, dt: f32)
   state.runningTimeSeconds += dt
   if input.up.isDown   do state.faceVisibility += 0.01
   if input.down.isDown do state.faceVisibility -= 0.01
+  if input.left.isDown   do state.offx -= 0.01
+  if input.right.isDown do state.offx += 0.01
   state.faceVisibility = la.clamp(f32(0.0), state.faceVisibility, f32(1.0))
 }
 
@@ -161,7 +164,7 @@ render :: proc(state: ^State)
   gl.UseProgram(state.shaders[2])
   shader_set(state.shaders[2], "dtColor", dtColor, dtColor, dtColor, 1.0)
   shader_set(state.shaders[2], "faceVisibility", state.faceVisibility)
-  shader_set(state.shaders[2], "offset", 0.0, 0.0)
+  shader_set(state.shaders[2], "offset", state.offx, state.offy)
   shader_set(state.shaders[2], "texture1", 0)
   shader_set(state.shaders[2], "texture2", 1)
   gl.BindVertexArray(state.vao[0])

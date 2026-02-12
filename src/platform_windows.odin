@@ -134,6 +134,7 @@ win32_main_thread_entry :: proc "std" (param: rawptr) -> u32
     message: win32.MSG
     for win32.PeekMessageW(&message, nil, 0, 0, win32.PM_REMOVE)
     {
+      isDown := true
       switch message.message
       {
         case win32.WM_QUIT, win32.WM_CLOSE, win32.WM_DESTROY:
@@ -151,38 +152,37 @@ win32_main_thread_entry :: proc "std" (param: rawptr) -> u32
             rect.bottom - rect.top,
           );
         }
-        case win32.WM_KEYDOWN, win32.WM_KEYUP, win32.WM_SYSKEYDOWN,
-          win32.WM_SYSKEYUP:
+        case win32.WM_KEYUP, win32.WM_SYSKEYUP:
+        {
+          isDown = false
+          fallthrough
+        }
+        case win32.WM_KEYDOWN,  win32.WM_SYSKEYDOWN:
         {
           vkCode  := message.wParam
-          isDown  := ((message.lParam & (1 << 30)) == 0)
-          wasDown := ((message.lParam & (1 << 29)) == 1)
+          //isDown  := ((message.lParam & (1 << 29)) == 0)
           if vkCode == win32.VK_UP
           {
+            input.up.wasDown = input.up.isDown
             input.up.isDown  = isDown
-            input.up.wasDown = wasDown
           }
           if vkCode == win32.VK_DOWN
           {
+            input.down.wasDown = input.down.isDown
             input.down.isDown  = isDown
-            input.down.wasDown = wasDown
+          }
+          if vkCode == win32.VK_LEFT
+          {
+            input.left.wasDown = input.left.isDown
+            input.left.isDown  = isDown
+          }
+          if vkCode == win32.VK_RIGHT
+          {
+            input.right.wasDown = input.right.isDown
+            input.right.isDown  = isDown
           }
         }
       }
-      //paint: win32.PAINTSTRUCT
-      //hdx := win32.BeginPaint(windowHandle, &paint)
-      //if gInitedOpengl
-      //{
-      //  rect: win32.RECT
-      //  win32.GetClientRect(windowHandle, &rect);
-      //  gl.Viewport(
-      //    rect.left,
-      //    rect.top,
-      //    rect.right - rect.left,
-      //    rect.bottom - rect.top,
-      //  );
-      //}
-      //win32.EndPaint(windowHandle, &paint)
     }
     app.update_and_render(stateMemory, input, dt)
 
@@ -251,8 +251,7 @@ win32_display_window_proc :: proc "stdcall" (windowHandle: win32.HWND, message: 
   switch message
   {
   case win32.WM_DESTROY, win32.WM_CLOSE, win32.WM_QUIT,
-     win32.WM_SIZE, win32.WM_KEYDOWN, win32.WM_KEYUP,
-      win32.WM_SYSKEYDOWN, win32.WM_SYSKEYUP:
+     win32.WM_SIZE:
     {
       win32.PostThreadMessageW(gMainThreadID, message, wParam, lParam)
     }

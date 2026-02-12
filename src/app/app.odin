@@ -4,6 +4,7 @@ import gl "vendor:OpenGL"
 import "core:fmt"
 import "base:runtime"
 import "core:math"
+import la "core:math/linalg"
 import stbi "vendor:stb/image"
 import "core:c"
 
@@ -17,6 +18,15 @@ State :: struct{
   textures : [2]Texture,
   shaders: [3]u32,
   runningTimeSeconds: f32,
+  faceVisibility: f32,
+}
+
+Input_Key :: struct{
+  isDown, wasDown: bool
+}
+
+Input :: struct{
+  up, down, left, right: Input_Key,
 }
 
 
@@ -63,8 +73,8 @@ indecies1 := [?]u32 {
 texturedVerticies := [?] f32 {
      0.5,  0.5, 0.0,   1.0, 0.0, 0.0,   1.0, 1.0,   // top right
      0.5, -0.5, 0.0,   0.0, 1.0, 0.0,   1.0, 0.0,   // bottom right
-    -0.5, -0.5, 0.0,   0.0, 0.0, 1.0,   0.0, 0.0,   // bottom let
-    -0.5,  0.5, 0.0,   1.0, 1.0, 0.0,   0.0, 1.0    // top let
+    -0.5, -0.5, 0.0,   0.0, 0.0, 1.0,   0.0, 0.0,   // bottom left
+    -0.5,  0.5, 0.0,   1.0, 1.0, 0.0,   0.0, 1.0    // top left
 }
 
 @rodata
@@ -117,15 +127,24 @@ gl_debug_output :: proc "c" (source: u32, type: u32, id: u32, severity: u32, len
 }
 
 
-update_and_render :: proc(statePtr: rawptr, dt: f32)
+update_and_render :: proc(statePtr: rawptr, input: Input, dt: f32)
 {
   state : ^State = cast(^State)statePtr
+  input := input
   if !state.initialized
   {
     init(state)
   }
-  state.runningTimeSeconds += dt
+  update(state, &input, dt)
   render(state)
+}
+
+update :: proc(state: ^State, input: ^Input, dt: f32)
+{
+  state.runningTimeSeconds += dt
+  if input.up.isDown   do state.faceVisibility += 0.01
+  if input.down.isDown do state.faceVisibility -= 0.01
+  state.faceVisibility = la.clamp(f32(0.0), state.faceVisibility, f32(1.0))
 }
 
 render :: proc(state: ^State)
@@ -141,14 +160,8 @@ render :: proc(state: ^State)
   dtColor := (math.sin_f32(state.runningTimeSeconds) + 1.0) / 2.0
   gl.UseProgram(state.shaders[2])
   shader_set(state.shaders[2], "dtColor", dtColor, dtColor, dtColor, 1.0)
-  gl.Uniform2f(
-      gl.GetUniformLocation(
-        state.shaders[2],
-        cast(cstring)"offset"
-      ),
-      0.0,
-      0.0
-  )
+  shader_set(state.shaders[2], "faceVisibility", state.faceVisibility)
+  shader_set(state.shaders[2], "offset", 0.0, 0.0)
   shader_set(state.shaders[2], "texture1", 0)
   shader_set(state.shaders[2], "texture2", 1)
   gl.BindVertexArray(state.vao[0])
@@ -350,6 +363,7 @@ shader_set :: proc{
   shader_set_i32,
   shader_set_f32,
   shader_set_v4f,
+  shader_set_v2f,
 }
 
 shader_set_i32 :: proc(shader: Shader, name: cstring, val: i32)

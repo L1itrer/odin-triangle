@@ -127,6 +127,7 @@ win32_main_thread_entry :: proc "std" (param: rawptr) -> u32
 
 
 
+  input: app.Input
 
   mainLoop: for gRunning
   {
@@ -150,6 +151,23 @@ win32_main_thread_entry :: proc "std" (param: rawptr) -> u32
             rect.bottom - rect.top,
           );
         }
+        case win32.WM_KEYDOWN, win32.WM_KEYUP, win32.WM_SYSKEYDOWN,
+          win32.WM_SYSKEYUP:
+        {
+          vkCode  := message.wParam
+          isDown  := ((message.lParam & (1 << 30)) == 0)
+          wasDown := ((message.lParam & (1 << 29)) == 1)
+          if vkCode == win32.VK_UP
+          {
+            input.up.isDown  = isDown
+            input.up.wasDown = wasDown
+          }
+          if vkCode == win32.VK_DOWN
+          {
+            input.down.isDown  = isDown
+            input.down.wasDown = wasDown
+          }
+        }
       }
       //paint: win32.PAINTSTRUCT
       //hdx := win32.BeginPaint(windowHandle, &paint)
@@ -166,7 +184,7 @@ win32_main_thread_entry :: proc "std" (param: rawptr) -> u32
       //}
       //win32.EndPaint(windowHandle, &paint)
     }
-    app.update_and_render(stateMemory, dt)
+    app.update_and_render(stateMemory, input, dt)
 
     win32.SwapBuffers(dc)
     free_all(context.temp_allocator)
@@ -233,7 +251,8 @@ win32_display_window_proc :: proc "stdcall" (windowHandle: win32.HWND, message: 
   switch message
   {
   case win32.WM_DESTROY, win32.WM_CLOSE, win32.WM_QUIT,
-     win32.WM_SIZE:
+     win32.WM_SIZE, win32.WM_KEYDOWN, win32.WM_KEYUP,
+      win32.WM_SYSKEYDOWN, win32.WM_SYSKEYUP:
     {
       win32.PostThreadMessageW(gMainThreadID, message, wParam, lParam)
     }

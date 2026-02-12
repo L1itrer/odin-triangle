@@ -4,6 +4,7 @@ in vec4 vertColor;
 in vec2 texCoord;
 
 uniform vec4 dtColor;
+uniform float faceVisibility;
 
 uniform sampler2D texture1;
 uniform sampler2D texture2;
@@ -20,7 +21,7 @@ void main()
   //outColor = texture(ourTexture, texCoord) * baseColor * supColor ;//mix(baseColor, dtColor, 0.2);//vec4(vertColor, 1.0);
   outColor = mix(
     texture(texture1, texCoord) * baseColor * supColor,
-    texture(texture2, texCoord),
-    0.2
+    texture(texture2, vec2(-texCoord.x, texCoord.y)),
+    faceVisibility
   );
 }

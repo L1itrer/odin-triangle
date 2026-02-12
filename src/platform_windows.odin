@@ -14,7 +14,7 @@ gMainThreadID : win32.DWORD = 0
 gServiceWindow: win32.HWND
 opengl32dll: win32.HMODULE
 
-WINDOW_WIDTH :: 800
+WINDOW_WIDTH :: 600
 WINDOW_HEIGHT :: 600
 TARGET_MS_PER_FRAME :: 16
 

@@ -150,6 +150,7 @@ update :: proc(state: ^State, input: ^Input, dt: f32)
   state.faceVisibility = la.clamp(f32(0.0), state.faceVisibility, f32(1.0))
 }
 
+
 render :: proc(state: ^State)
 {
   gl.ClearColor(0.1, 0.1, 0.1, 1.0)
@@ -161,12 +162,25 @@ render :: proc(state: ^State)
   gl.BindTexture(cast(u32)gl.GL_Enum.TEXTURE_2D, cast(u32)state.textures[1])
 
   dtColor := (math.sin_f32(state.runningTimeSeconds) + 1.0) / 2.0
+
+  
+  transform := la.identity_matrix(matrix[4,4]f32)
+  transform *= la.matrix4_translate_f32({state.offx, state.offy, 1.0})
+  transform *= la.matrix4_rotate_f32(f32(state.runningTimeSeconds/2), [3]f32{0.0, 0.0, 1.0})
+  transform *= la.matrix4_scale_f32([3]f32{0.5, 0.5, 0.5})
   gl.UseProgram(state.shaders[2])
   shader_set(state.shaders[2], "dtColor", dtColor, dtColor, dtColor, 1.0)
   shader_set(state.shaders[2], "faceVisibility", state.faceVisibility)
-  shader_set(state.shaders[2], "offset", state.offx, state.offy)
+  shader_set(state.shaders[2], "transform", &transform)
   shader_set(state.shaders[2], "texture1", 0)
   shader_set(state.shaders[2], "texture2", 1)
+  gl.BindVertexArray(state.vao[0])
+  gl.DrawElements(cast(u32)gl.GL_Enum.TRIANGLES, 6, cast(u32)gl.GL_Enum.UNSIGNED_INT, nil)
+
+  transform = la.identity(matrix[4,4]f32)
+  transform *= la.matrix4_translate_f32({-0.5, 0.5, 0.0})
+  transform *= la.matrix4_scale_f32({0.1 + dtColor, 0.1 + dtColor, 1.0})
+  shader_set(state.shaders[2], "transform", &transform)
   gl.BindVertexArray(state.vao[0])
   gl.DrawElements(cast(u32)gl.GL_Enum.TRIANGLES, 6, cast(u32)gl.GL_Enum.UNSIGNED_INT, nil)
 }
@@ -365,8 +379,9 @@ shader_create :: proc(vertexSource: cstring, fragmentSource: cstring) -> (shader
 shader_set :: proc{
   shader_set_i32,
   shader_set_f32,
-  shader_set_v4f,
-  shader_set_v2f,
+  shader_set_v4f32,
+  shader_set_v2f32,
+  shader_set_mat4f32,
 }
 
 shader_set_i32 :: proc(shader: Shader, name: cstring, val: i32)
@@ -379,11 +394,17 @@ shader_set_f32 :: proc(shader: Shader, name: cstring, val: f32)
   gl.Uniform1f(gl.GetUniformLocation(shader, name), val)
 }
 
-shader_set_v4f :: proc(shader: Shader, name: cstring, x, y, z, w: f32)
+shader_set_v4f32 :: proc(shader: Shader, name: cstring, x, y, z, w: f32)
 {
   gl.Uniform4f(gl.GetUniformLocation(shader, name), x, y, z, w)
 }
-shader_set_v2f :: proc(shader: Shader, name: cstring, x, y: f32)
+shader_set_v2f32 :: proc(shader: Shader, name: cstring, x, y: f32)
 {
   gl.Uniform2f(gl.GetUniformLocation(shader, name), x, y)
 }
+
+shader_set_mat4f32 :: proc(shader: Shader, name: cstring, mat: ^matrix[4, 4]f32)
+{
+  gl.UniformMatrix4fv(gl.GetUniformLocation(shader, name), 1, false, raw_data(mat))
+}
+
